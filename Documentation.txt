@@ -1,7 +1,3 @@
-Below is a self-contained document you can give any AI so it can recreate the same web app from scratch.
-
-***
-
 ## 1. Goal and Overview
 
 Build a **FastAPI + Docker** web app called **“Portfolio Manager”** that:
