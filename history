@@ -1,0 +1,116 @@
+We implemented several structural and functional changes to your FastAPI portfolio app UI and logic so that future work can treat this as the baseline. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Layout and design changes
+
+- Split the page into a **stable top section** and a **flexible bottom section**.  
+  - Top: left side is “Active portfolio” positions table; right side is the sidebar with “Today summary” cards and “Portfolio growth” charts. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Bottom: contains “Portfolios summary (all portfolios)” and both history tables in separate panels, each with its own white background that grows with the table height. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Removed the single big inflexible flex row and replaced it with `.page-root` + `.top-layout` + `.bottom-layout` structure, so multiple portfolios / large tables no longer leave gray gaps or cropped backgrounds. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Active portfolio section
+
+- The `/` route (`index`) still selects the active portfolio via `get_portfolio(portfolio)` and builds:  
+  - `positions` table with tickers, current prices, qty, buy, total cost, P/L, P/L%, and note. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Per‑row BUY/SELL inline form (hidden `portfolio`, `symbol`, inputs for qty/price/note). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Sorting:  
+  - Query parameters `sort_by` and `sort_dir` drive sorting by `symbol`, `price`, `qty`, `buy`, `cost`, `pl`, `pl_pct` using a central `sort_key` function and toggling asc/desc via helper `toggle(col)`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Ticker filter for this table:  
+  - A text box `#ticker-filter` filters `<tr class="ticker-row" data-symbol="...">` by comma/space‑separated tokens (e.g. `NVDA, AAPL`). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## “Today summary” sidebar and P/L cards
+
+- For each portfolio in `PORTFOLIOS`, we compute:  
+  - `total_cost` based on positions’ qty and buy.  
+  - `total_value` using latest prices for that portfolio (using cached prices for the active one and fresh fetch for others). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - `pl = total_value - total_cost`, and display both with color‑coded positive/negative. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Each portfolio gets a small “card” in the sidebar showing name, total value, and total P/L. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Portfolio growth charts
+
+- A sidebar section “Portfolio growth” includes one image `<img src="/chart/{portfolio_name}">` per portfolio. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- The `/chart/{portfolio_name}` endpoint:  
+  - If `PORTFOLIO_HISTORY[portfolio_name]` is empty or missing, returns a small blank PNG (no axes). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Otherwise plots time series (`times` and total `values`) using matplotlib, fills under the curve, hides ticks, and returns PNG. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- History population:  
+  - On each `/` page load, after fetching prices, `update_portfolio_history_point(p_name, TICKERS, POSITIONS, prices)` appends a new `{time, value}` point for the active portfolio. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - After imports and each BUY/SELL, we call `rebuild_portfolio_history_from_transactions(p_name)` so `PORTFOLIO_HISTORY` can be rebuilt from transaction dates/amounts. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Result: new portfolios or fresh imports show blank charts initially; as time points accumulate (via rebuild + page reloads), curves become visible. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Portfolios summary (all portfolios) matrix
+
+- We build a matrix over all symbols in all portfolios:  
+  - `summary_data`: one row per symbol, one column per portfolio. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Each cell holds: presence flag, qty, avg buy, total cost, P/L amount, P/L%, and a **tag** (`0–9` or None). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- The matrix is rendered as:  
+  - First column: symbol.  
+  - One column per portfolio (header `<th class="summary-header summary-header-col" data-pfname="...">`). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Each data cell `<td class="summary-cell" data-pfname="PF_NAME" data-tag="TAG_OR_EMPTY">` shows Qty, Avg, Cost, P/L, and a Tag control. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+### Tag storage and updating (TAGS “database”)
+
+- In memory: `TAGS: Dict[str, Dict[str, int]]`, keyed by portfolio then symbol. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- When building summary rows, each cell reads its tag from `TAGS[pf_name].get(sym)` and sets both the visible dropdown and the `data-tag` attribute accordingly. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- New endpoint: `/summary/tag` (POST) with `portfolio`, `symbol`, `tag`. It:  
+  - Normalizes portfolio and symbol.  
+  - Creates `TAGS[p_name]` if needed.  
+  - Clears the tag if `tag == ""`; otherwise parses int, accepts only `0–9`, stores `TAGS[p_name][sym] = val`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Redirects back to `/?portfolio=p_name`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Crucial UX change: the tag `<select>` now has `onchange="this.form.submit()"`, so selecting a tag immediately posts to `/summary/tag`, updates TAGS, and reloads the page. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - This ensures the newly selected tag is present in the rebuilt HTML as `data-tag="5"` etc., which the filter can then see. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+### Tag filter behavior (per portfolio)
+
+- Below the header row, we added a tag‑filter row:  
+  - One `<input class="summary-tag-filter">` per portfolio column, aligned under the header. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- The JS for filters:  
+  - `parseTokens` splits text by comma/space and uppercases. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - `applySummaryFilters`:
+    - Reads `#summary-filter` (global text filter over symbols/row text). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+    - For each portfolio column, reads its `.summary-tag-filter`, interprets digits only (`0–9`), and if non‑empty builds an entry `{ pfName, tags: [ '1', '5', ... ] }`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+    - For each `.summary-row`:
+      - First checks text filter (if any); if no match, hides row. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+      - Then applies all active tag filters: for each requirement, finds the corresponding `td.summary-cell[data-pfname='PF_NAME']` and reads `data-tag`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+      - If cell’s `data-tag` empty or not in the allowed tags list, hides the row; otherwise leaves it visible. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Input events on both `#summary-filter` and each `.summary-tag-filter` call `applySummaryFilters()` in real time. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Net effect: after you pick tags (which submit and reload), typing “5” in a portfolio’s tag filter shows all tickers whose `data-tag` is `5` in that portfolio, and you can combine multiple tags like `1,2,5` and combine text + tags filters. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## History tables and filters
+
+- Current portfolio history table (`history-table`):  
+  - Driven by `TRANSACTIONS` of active portfolio, sorted by `history_sort_by`/`history_sort_dir` with toggle links on the header. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Client‑side filter: `#history-filter` uses `attachTableFilter("history-filter", "history-table", "history-row", 1)` to hide/show rows on text match. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- All portfolios history (`global-history-table`):  
+  - Aggregates all transactions from all portfolios, sorted similarly with `global_sort_by`/`global_sort_dir`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Client‑side filter: `#global-history-filter` with same mechanism. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Portfolio management, CSV/XLSX import/export, and backups
+
+- Portfolio CRUD:  
+  - `/portfolio/add` – new empty portfolio.  
+  - `/portfolio/rename` – renames and migrates `PORTFOLIOS`, `PORTFOLIO_HISTORY`, and `TAGS`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - `/portfolio/remove` – deletes entries from all three. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Ticker add/remove per portfolio via `/add` and `/remove`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Trade endpoints `/buy` and `/sell` update positions, append transactions, and call `rebuild_portfolio_history_from_transactions`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- CSV import `/import/csv` and bulk `/import/csv_multi`:  
+  - Require columns Symbol, Current Price, Trade Date, Purchase Price, Quantity. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - For each portfolio imported, reset tickers/positions/transactions/history and `TAGS[p_name] = {}`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+  - Rebuild history afterward. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- XLSX upload `/portfolio/upload` and download `/portfolio/download`, plus CSV export `/portfolio/export_csv`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Global JSON backup / restore handled via `backup_utils` and `routers_backup` (endpoints already wired in via `include_router(backup_router)`). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Client‑side helpers and controls panel
+
+- Controls panel at the top has: active portfolio selector, add/remove ticker forms, ticker filter, and a collapsible “More actions” area. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- The “More actions” section includes portfolio add/rename/remove, import/export, bulk CSV import, and JSON backup/restore forms. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- A small JS snippet toggles this section (`#toggle-extra-btn` / `#controls-extra`). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+***
+
+In short, the current baseline is:
+
+- FastAPI backend with `PORTFOLIOS`, `PORTFOLIO_HISTORY`, and `TAGS` as in‑memory stores. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- A two‑section layout (top = active portfolio + sidebar, bottom = summaries + history) with flexible white panels. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Working tag persistence and **live** tag filtering in the “Portfolios summary (all portfolios)” matrix via `data-tag` attributes. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Portfolio growth charts generated from `PORTFOLIO_HISTORY`, populated via both transaction rebuilds and periodic history points on page load. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+Next time you come back, you can tell the AI: “Continue from my FastAPI portfolio manager with TAGS, summary tag filters, and portfolio growth charts already implemented as described,” and this description should be enough to resume incremental improvements. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)

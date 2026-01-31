@@ -1,0 +1,3 @@
+chmod +x restore-stock-backup.sh
+./restore-stock-backup.sh ~/stock-table-export/backup-20260131-020101.json
+

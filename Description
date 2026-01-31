@@ -1,0 +1,119 @@
+Project overview
+
+This project is a personal portfolio tracking web application that lets me manage multiple stock portfolios, track positions and P/L, tag holdings with strategy labels, review trade history, and import/export data via CSV, XLSX, and JSON backups. It is built as a small production-style FastAPI service with a custom HTML UI, background data persistence, and live price fetching from an external market data API.
+
+Technologies and tools
+
+FastAPI for HTTP routing, modular routers, and async endpoints.
+
+Python 3 with type hints and a clear package structure (routers, core, backup utilities).
+
+httpx and asyncio for non-blocking price fetching from Finnhub.
+
+openpyxl and csv for ingesting and exporting portfolios as Excel and CSV files.
+
+matplotlib for generating PNG portfolio growth charts dynamically.
+
+In-memory data model (PORTFOLIOS, PORTFOLIO_HISTORY, TAGS) with JSON backup/restore to simulate persistence.
+
+Hand-written HTML, CSS, and vanilla JavaScript for the UI, including filtering, sorting, and bulk actions without a frontend framework.
+
+This stack demonstrates backend API design, async I/O, stateful services, file processing, and building a usable web UI from scratch.
+
+File-by-file descriptions
+
+app.py
+
+Entry point for the FastAPI application; wires together all routers and startup hooks.
+
+Includes routers for UI, portfolio operations, ticker utilities, import/export, charts, backup, and configuration.
+
+On startup, automatically loads the latest JSON backup to hydrate in-memory state, simulating a persistent, always-on service.
+
+routers/ui.py
+
+Renders the main HTML interface: active portfolio positions, per-portfolio P/L, sidebar summary cards, growth charts, and detailed trade history tables.
+
+Implements column sorting, text filtering, and per-symbol trade forms (buy/sell) directly inside the positions table.
+
+Provides a hidden “More actions” section for advanced portfolio management (adding/removing portfolios, bulk imports/exports, backups) while keeping the router logic focused on routing and state wiring.
+
+Uses helper modules to keep the router concise and maintainable.
+
+routers/ui_constants.py
+
+Centralizes UI-related constants such as the CSS style block and the human-readable tag labels used in the summary table (for example: Hold, Buy, Reduce, Review Thesis).
+
+Keeps styling and vocabulary separate from the routing and business logic, improving readability and changeability.
+
+routers/ui_helpers.py
+
+Contains pure-Python helper functions for building HTML fragments: position rows, history rows, cross-portfolio summary, sidebar “today” cards, and chart placeholders.
+
+Encapsulates financial calculations for P/L amounts and percentages, total values, and cost basis, as well as tag rendering per symbol and portfolio.
+
+Provides reusable sorting helpers so the UI can toggle sort direction via query parameters without duplicating logic.
+
+routers/import_export.py
+
+Implements all CSV and XLSX import and export endpoints, including bulk CSV import into multiple portfolios in a single request.
+
+Validates file structure, merges new data into existing positions (weighted average buy price, quantity aggregation), and reconstructs transaction history when imports occur.
+
+Uses openpyxl, csv, and in-memory models to integrate smoothly with tools like Excel or Google Sheets.
+
+routers/portfolio.py
+
+Provides CRUD operations for portfolios and tickers: add, rename, and remove portfolios; add and remove tickers within a portfolio.
+
+Records buy and sell trades, updates positions (quantities and average prices), logs transactions, and triggers portfolio history rebuilds for accurate charts and performance tracking.
+
+Manages default-portfolio behavior and cleans up related state (history and tags) when a portfolio is removed.
+
+routers/tickers.py
+
+Houses ticker-focused endpoints, such as adding tickers via API or refreshing ticker data separately from the UI.
+
+Keeps low-level ticker operations decoupled from the main interface, making it easier to script or test programmatically.
+
+routers/charts.py
+
+Serves dynamically generated PNG charts for each portfolio’s historical value using matplotlib.
+
+Reads from PORTFOLIO_HISTORY, plots compact time-series charts, and returns them as images for embedding in the UI.
+
+routers/backup.py
+
+Exposes endpoints to create and download JSON backups of all in-memory data, and restore from a backup file.
+
+Allows the application to recover state after restarts or be moved between environments with minimal effort.
+
+routers/config.py
+
+Provides configuration endpoints and simple UI for features like customizing the order of portfolios in the summary table.
+
+Keeps user display preferences separate from core financial data and logic.
+
+backup_utils.py
+
+Defines the core in-memory data structures: PORTFOLIOS, PORTFOLIO_HISTORY, and functions for fetching prices, updating history, and loading or saving JSON backups.
+
+Encapsulates interaction with the external price API and maintains historical value series used by the charting layer.
+
+core/state.py
+
+Hosts shared global configuration such as the Finnhub API key, the TAGS mapping for per-symbol annotations, and the resolve_portfolio helper.
+
+Acts as a single source of truth for cross-cutting state that multiple routers depend on.
+
+What this project demonstrates
+
+Design and implementation of a moderately complex, stateful web service in Python.
+
+Use of FastAPI and async programming to integrate external APIs cleanly and efficiently.
+
+Practical portfolio accounting logic (positions, P/L, average price, history reconstruction) encoded in maintainable, testable Python.
+
+Robust import/export pipelines for CSV and XLSX data, including validation and bulk operations.
+
+A fully custom HTML/CSS/JavaScript interface without a framework, showing the ability to handle UI interactions directly when appropriate.

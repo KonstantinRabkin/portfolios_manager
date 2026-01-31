@@ -1,0 +1,33 @@
+You already have a global JSON backup/restore mechanism wired; you just need to use it from the UI to snapshot all portfolios before changing code. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## What the backup covers
+
+- The `routers_backup` router is included into the app, and `backup_utils` has `PORTFOLIOS`, `PORTFOLIO_HISTORY`, and startup logic to load the latest backup. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- The “More actions” panel on the page includes two forms:  
+  - “Create JSON backup” → POST `/backup/create`  
+  - “Restore JSON” → POST `/backup/restore` with a `.json` file upload [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- These endpoints are designed to save and restore the complete in‑memory state (all portfolios, positions, transactions, and history) in one JSON file. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Step‑by‑step: create a full backup now
+
+1. Open your app in the browser and expand **More actions**.  
+2. In the **Global JSON backup** section, click **Create JSON backup**. This sends a POST to `/backup/create`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+3. Your browser should download a `.json` file (e.g. `backup_YYYYMMDD_HHMM.json` depending on how `routers_backup` names it).  
+4. Save that file somewhere safe (e.g. Git‑ignored `backups/` directory or local disk).
+
+This file now represents the full state of **all** portfolios and history at this moment and can be restored later, even after code changes or container rebuilds. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+
+## Step‑by‑step: restore everything later
+
+When you have a new image/container or after refactoring:
+
+1. Start the new version of the app.  
+2. Go again to **More actions → Global JSON backup**.  
+3. In **Restore JSON**, choose your saved backup `.json` file and click **Restore**. This posts to `/backup/restore`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+4. The backend loads data from that file back into `PORTFOLIOS` and `PORTFOLIO_HISTORY` (and any other backed‑up structures), then redirects you to `/`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+5. You should now see all portfolios, positions, and histories exactly as in the snapshot.
+
+## Extra safety: keep periodic snapshots
+
+- Before any larger code change or refactor, repeat **Create JSON backup** and keep dated files. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)
+- Optionally also use the **Export CSV backup** per portfolio for an additional per‑portfolio sheet you can inspect in Excel; but for “reload everything exactly as it was”, the JSON backup is the primary tool. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/096bd0c5-6bb3-41bf-801b-873844a5064a/paste.txt)

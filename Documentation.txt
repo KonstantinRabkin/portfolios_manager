@@ -1,0 +1,338 @@
+Below is a self-contained document you can give any AI so it can recreate the same web app from scratch.
+
+***
+
+## 1. Goal and Overview
+
+Build a **FastAPI + Docker** web app called **“Portfolio Manager”** that:
+
+- Shows live stock prices and positions for one or more portfolios.  
+- Tracks quantities, average buy price, total cost, per‑ticker P/L, and total P/L.  
+- Provides a **per‑portfolio transaction history** and an **all‑portfolios history**.  
+- Lets the user:
+  - Add/remove portfolios.  
+  - Add/remove tickers manually.  
+  - Record buy/sell trades.  
+  - Download/upload a simple `.xlsx` positions file.  
+  - Import a full portfolio from a CSV like `lira.csv` (one buy lot per row). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/4df5babe-e970-4996-ba6b-c4eb4999f41d/lira.csv)
+- Shows a small **growth chart** (PNG) per portfolio, built from in‑memory history. [geeksforgeeks](https://www.geeksforgeeks.org/python/return-an-image-in-fastapi/)
+
+All state (portfolios, positions, transactions, history) is kept **in memory** (no DB) and resets when the container restarts.
+
+***
+
+## 2. Tech Stack
+
+- Language: Python 3  
+- Framework: FastAPI + Uvicorn. [github](https://github.com/tiangolo/uvicorn-gunicorn-fastapi-docker)
+- Container: Docker  
+- Libraries:
+  - `fastapi`
+  - `uvicorn`
+  - `httpx` (for live prices from Finnhub)  
+  - `python-multipart` (file uploads)  
+  - `openpyxl` (Excel read/write)  
+  - `matplotlib` (PNG charts)  
+  - `csv` (standard library, for CSV import) [fastapi.tiangolo](https://fastapi.tiangolo.com/tutorial/request-files/)
+
+***
+
+## 3. Data Model (in-memory)
+
+Define global dicts in `app.py`:
+
+- `PORTFOLIOS: Dict[str, Dict]` where each portfolio has:
+  - `"tickers": List[str]`
+  - `"positions": Dict[str, {"qty": float, "buy": float}]`
+  - `"transactions": List[{"time": str, "portfolio": str, "symbol": str, "action": "BUY"/"SELL", "qty": float, "price": float, "note": str}]`
+- `PORTFOLIO_HISTORY: Dict[str, List[{"time": datetime, "value": float}]]` for charting.
+
+Example initial value:
+
+```python
+PORTFOLIOS = {
+    "Main": {
+        "tickers": ["TECL", "AAPL", "MSFT", "GOOG"],
+        "positions": {},
+        "transactions": [],
+    }
+}
+PORTFOLIO_HISTORY = {}
+DEFAULT_PORTFOLIO = "Main"
+```
+
+***
+
+## 4. External Data: Live Prices
+
+Use **Finnhub** quote endpoint and an API key:
+
+- Endpoint: `https://finnhub.io/api/v1/quote`  
+- Params: `symbol`, `token`  
+- Use column `c` as current price. [trymito](https://www.trymito.io/blog/how-to-automate-portfolio-analysis-in-python-a-complete-guide)
+
+Implement an async helper:
+
+```python
+async def fetch_prices(tickers: List[str]) -> Dict[str, Optional[float]]:
+    base_url = "https://finnhub.io/api/v1/quote"
+    headers = {"User-Agent": "Mozilla/5.0 ..."}
+    results = {}
+    async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+        for symbol in tickers:
+            try:
+                r = await client.get(base_url, params={"symbol": symbol, "token": FINNHUB_API_KEY})
+                r.raise_for_status()
+                data = r.json()
+                results[symbol] = data.get("c") or None
+            except Exception:
+                results[symbol] = None
+            await asyncio.sleep(0.2)
+    return results
+```
+
+***
+
+## 5. Portfolio Calculations
+
+For each ticker:
+
+- Cost basis: `buy * qty`.  
+- Current value: `current_price * qty` (fallback to `buy` if price missing).  
+- P/L per ticker: `current_value - cost_basis`.  
+- P/L %: `pl / cost_basis * 100`.  
+- Total P/L for portfolio: sum of per‑ticker P/L. [blog.mlq](https://blog.mlq.ai/python-for-finance-portfolio-optimization/)
+
+On BUY:
+
+- New weighted average buy:  
+  \( \text{new\_buy} = \frac{old\_buy \cdot old\_qty + price \cdot qty}{old\_qty + qty} \).
+
+On SELL:
+
+- Reduce quantity, keep buy price unchanged for remaining shares.
+
+Also record a transaction for every BUY/SELL.
+
+***
+
+## 6. Portfolio History and Charts
+
+Two sources of history:
+
+1. **Live points**: On every page load, recompute total portfolio value from current prices and append a point to `PORTFOLIO_HISTORY[p_name]` (capped at 500 entries).  
+2. **Rebuild from transactions** (for imported CSVs): walk transactions in time order, simulate positions, and compute total value using buy prices as proxy (no live price).  
+
+Chart endpoint:
+
+- Path: `/chart/{portfolio_name}`  
+- Reads `PORTFOLIO_HISTORY[portfolio_name]`.  
+- Uses matplotlib to plot `times` vs `values`, fill under curve, and return PNG as `Response(content=buf.getvalue(), media_type="image/png")`. [techoverflow](https://techoverflow.net/2023/08/28/how-to-matplotlib-plt-savefig-to-a-io-bytesio-buffer/)
+
+If history is empty, return a simple blank/transparent PNG.
+
+***
+
+## 7. CSV Import (lira.csv style)
+
+CSV structure (from `lira.csv`): [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/4df5babe-e970-4996-ba6b-c4eb4999f41d/lira.csv)
+
+Key columns used:
+
+- `Symbol`  
+- `Current Price` (not strictly needed for positions, but available)  
+- `Trade Date` (e.g. `20260128`, used as time)  
+- `Purchase Price`  
+- `Quantity`  
+- `Comment` (can be blank)  
+
+Each row is treated as a **BUY** lot.
+
+Import endpoint:
+
+- Path: `POST /import/csv`  
+- Form fields:
+  - `portfolio_name` (string, name of portfolio to fill/create)  
+  - `file` (UploadFile, `.csv`)  
+
+Logic:
+
+1. Read content, decode UTF‑8.  
+2. Use `csv.DictReader`.  
+3. Validate that required columns exist: `Symbol, Current Price, Trade Date, Purchase Price, Quantity`. [help.portfolio-performance](https://help.portfolio-performance.info/en/reference/file/import/csv-import/)
+4. Ensure portfolio exists in `PORTFOLIOS`, then **clear** its tickers, positions, transactions, and corresponding history.  
+5. Iterate rows:
+   - Parse symbol (`upper()`), quantity, purchase price.  
+   - Parse trade date `YYYYMMDD` into `datetime`; fallback to `now` if parse fails.  
+   - Note = `Comment` column.  
+   - Append a BUY transaction with that time, qty, price, note.  
+   - Update `positions[symbol]` with weighted average buy and total qty.  
+6. After loop, set:
+   - `pf["tickers"] = sorted(positions.keys())`  
+   - `pf["positions"] = positions`  
+   - `pf["transactions"] = transactions`  
+7. Call `rebuild_portfolio_history_from_transactions(p_name)` to regenerate that portfolio’s history curve.
+
+***
+
+## 8. Excel Upload/Download
+
+Keep the simpler Excel support:
+
+- Download: `/portfolio/download` creates an `.xlsx` with sheet `Portfolio`, header `Ticker, Qty, Buy`, and each ticker row.  
+- Upload: `/portfolio/upload` expects `.xlsx` with same headers, updates the current portfolio’s tickers and positions.
+
+Implementation uses `openpyxl.Workbook` and `openpyxl.load_workbook`. [stackoverflow](https://stackoverflow.com/questions/70617121/how-to-upload-a-csv-file-in-fastapi-and-convert-it-into-json)
+
+***
+
+## 9. Web UI Layout and Behavior
+
+Single route `/` returns raw HTML (no template engine), with:
+
+- Auto‑refresh `<meta http-equiv="refresh" content="120">`.  
+- Title: “Portfolio Manager”.  
+- CSS in `<style>` for:
+  - Two‑column layout: main column (positions, summaries, history) and sidebar (summary and charts). [w3schools](https://www.w3schools.com/howto/howto_css_two_columns.asp)
+  - Basic table styling, cards, etc.
+
+Main parts:
+
+1. **Controls panel** (top of main column)
+   - Select active portfolio (dropdown).  
+   - Add portfolio / rename portfolio / remove portfolio.  
+   - Add/remove ticker in current portfolio.  
+   - Download portfolio (.xlsx).  
+   - Upload portfolio (.xlsx).  
+   - Import from CSV (full portfolio): text input for portfolio name, CSV file input, submit.
+
+2. **Current portfolio positions table**
+   - Columns: Ticker (link to Yahoo Finance), Current Price, Qty, Buy Price, Total Cost, P/L, Note, Trade.  
+   - In each row, a small inline form for Buy/Sell trade for that ticker.
+
+3. **Per‑portfolio total P/L**
+   - Shows sum of P/L for current portfolio.
+
+4. **Portfolios summary (all portfolios)**
+   - Matrix table: rows = symbols, columns = portfolios.  
+   - Each cell: Qty, Avg (buy), Cost, P/L (current portfolio only, others show `-`).
+
+5. **Current portfolio history**
+   - Table of all transactions for active portfolio (reverse chronological).
+
+6. **Global history**
+   - Table of all transactions across all portfolios (reverse chronological).
+
+7. **Sidebar**
+   - “Today summary” card list: each portfolio shows total value and total P/L (with positive/negative color).  
+   - “Portfolio growth” section: for each portfolio, a small box with `<img src="/chart/{portfolio}">`.
+
+***
+
+## 10. Endpoints Summary
+
+All endpoints in `app.py`:
+
+- `GET /`  
+  Render the HTML UI, fetch live prices, update live history point.
+
+- `GET /chart/{portfolio_name}`  
+  Return PNG chart for that portfolio from `PORTFOLIO_HISTORY`.
+
+- `POST /import/csv`  
+  Import full portfolio from a CSV like `lira.csv`.
+
+- `POST /portfolio/add`  
+  Create a new empty portfolio.
+
+- `POST /portfolio/rename`  
+  Rename a portfolio, including moving its history.
+
+- `POST /portfolio/remove`  
+  Remove a portfolio and its history.
+
+- `GET /portfolio/download`  
+  Download portfolio positions as `.xlsx`.
+
+- `POST /portfolio/upload`  
+  Upload `.xlsx` with simple positions.
+
+- `POST /add`  
+  Add ticker to current portfolio’s tickers list.
+
+- `POST /remove`  
+  Remove ticker and its position from current portfolio.
+
+- `POST /buy`  
+  Record a Buy trade (update position and transactions).
+
+- `POST /sell`  
+  Record a Sell trade (reduce position and transactions).
+
+***
+
+## 11. Dockerfile (minimal)
+
+Any AI should create a Dockerfile roughly like:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY app.py /app
+
+RUN apt-get update && apt-get install -y python3-pip \
+    && pip3 install --no-cache-dir fastapi uvicorn httpx python-multipart openpyxl matplotlib \
+    && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+This is enough for a dev container. For production, an AI may switch to `gunicorn + uvicorn` pattern, but it’s not required. [seenode](https://seenode.com/blog/deploy-fastapi-docker-and-uvicorn)
+
+***
+
+## 12. How to Run
+
+Locally in Docker:
+
+```bash
+docker build -t portfolio-manager .
+docker run -d -p 8080:8000 --name portfolio-manager portfolio-manager
+```
+
+Then open:
+
+- `http://localhost:8080/` for the UI.  
+- Use the “Import from CSV” form with `lira.csv` to populate a portfolio (e.g. name `LIRA`). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/127225108/4df5babe-e970-4996-ba6b-c4eb4999f41d/lira.csv)
+
+***
+
+If you hand this document plus the current `lira.csv` file to another AI, and say “recreate this app,” it should be able to regenerate `app.py`, the Dockerfile, and all behavior described above.
+
+
+How to take a backup of all portfolios:
+
+Open below link and it will generate a backup file.
+http://localhost:8080/backup/json
+
+
+How it works
+On startup, the app looks in data/backups/ for files named backup_YYYYMMDD_HHMMSS.json. It loads the newest one (if any) and uses it to initialize PORTFOLIOS, PORTFOLIO_HISTORY, and DEFAULT_PORTFOLIO.
+
+In the UI, there is a “Create JSON backup” button in the controls box.
+
+When you click it:
+
+The /backup/create endpoint builds the current in‑memory snapshot.
+
+It saves a JSON file under data/backups/backup_YYYYMMDD_HHMMSS.json inside the container/VM.
+
+It also responds with a downloadable portfolio_backup.json so you can save it locally if you want.
+
+On any future Docker/container restart, the app auto‑restores from the newest file in data/backups, so your last backup state is loaded automatically.
+
+You still keep CSV and XLSX import/export unchanged.
